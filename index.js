@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
 require('dotenv').config()
+
 
 const app = express();
 const port = 5000;
@@ -10,6 +12,8 @@ app.use(express.json());
 
 const username = process.env.DB_USER;
 const password = process.env.DB_PASS;
+const secret = process.env.SEC_KEY;
+
 
 
 app.get('/', async (req, res) => {
@@ -38,6 +42,15 @@ async function run() {
         const userCollection = database.collection('users');
         const apartmentCollection = database.collection('apartments');
         const agreementCollection = database.collection('agreements');
+
+        app.post('/jwt', async (req, res) => {
+            const user = req.body;
+            const token = jwt.sign(user, secret, {
+                expiresIn: '1h'
+            });
+            res.send({ token })
+        })
+
         app.get('/slides', async (req, res) => {
             const result = await slideCollection.find().toArray();
             res.send(result)
@@ -74,25 +87,17 @@ async function run() {
             if (isAlreadyExist) {
                 return res.send({ message: "You have already one agreement." })
             }
-            // const insertedAgreement = {
-            //     name,
-            //     email,
-            //     floor_no,
-            //     block_name,
-            //     apartment_no,
-            //     rent,
-            //     status
-            // }
-
-
             const result = await agreementCollection.insertOne(agreement);
             res.send(result)
 
         })
-        app.get('/users', async (req, res) => {
+        app.post('/users', async (req, res) => {
             const { name, email } = req.body;
             const query = { email: email }
-            const insertUser = { $setOnInsert: { name: name, email: email } }
+            const insertUser = { $set: { name: name }, $setOnInsert: { email: email } }
+            const options = { upsert: true }
+            const result = await userCollection.updateOne(query, insertUser, options);
+            res.send(result);
         })
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
