@@ -18,7 +18,7 @@ app.get('/', async (req, res) => {
 })
 
 
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const uri = `mongodb+srv://${username}:${password}@cluster0.nevhe4f.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -32,14 +32,73 @@ const client = new MongoClient(uri, {
 
 async function run() {
     try {
-        // Connect the client to the server	(optional starting in v4.7)
-        await client.connect();
-        // Send a ping to confirm a successful connection
+
+        const database = client.db('appertmentDb');
+        const slideCollection = database.collection('sliderdata');
+        const userCollection = database.collection('users');
+        const apartmentCollection = database.collection('apartments');
+        const agreementCollection = database.collection('agreements');
+        app.get('/slides', async (req, res) => {
+            const result = await slideCollection.find().toArray();
+            res.send(result)
+
+        })
+        app.get('/apartments', async (req, res) => {
+            const page = parseInt(req.query.page)
+            const limit = 6;
+            const skip = (page - 1) * limit;
+
+            const apartments = await apartmentCollection.find().skip(skip).limit(limit).toArray();
+            const totalapartments = await apartmentCollection.estimatedDocumentCount();
+            const totalPage = Math.ceil(totalapartments / limit)
+            res.send({ apartments, totalPage })
+        })
+        app.get('/apartment/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await apartmentCollection.findOne(query)
+            res.send(result)
+        })
+        app.post('/agreement', async (req, res) => {
+            const agreement = req.body;
+            const {
+                name,
+                email,
+                floor_no,
+                block_name,
+                apartment_no,
+                rent,
+                status } = agreement;
+            const query = { email: email };
+            const isAlreadyExist = await agreementCollection.countDocuments(query);
+            if (isAlreadyExist) {
+                return res.send({ message: "You have already one agreement." })
+            }
+            // const insertedAgreement = {
+            //     name,
+            //     email,
+            //     floor_no,
+            //     block_name,
+            //     apartment_no,
+            //     rent,
+            //     status
+            // }
+
+
+            const result = await agreementCollection.insertOne(agreement);
+            res.send(result)
+
+        })
+        app.get('/users', async (req, res) => {
+            const { name, email } = req.body;
+            const query = { email: email }
+            const insertUser = { $setOnInsert: { name: name, email: email } }
+        })
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
         // Ensures that the client will close when you finish/error
-        await client.close();
+        // await client.close();
     }
 }
 run().catch(console.dir);
@@ -48,10 +107,3 @@ run().catch(console.dir);
 app.listen(port, () => {
     console.log(`server is running at http://localhost:${port}`)
 })
-
-
-
-
-
-
-
