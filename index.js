@@ -65,7 +65,7 @@ async function run() {
                 }
                 req.decoded = decoded;
                 next();
-                console.log(req.decoded)
+                // console.log(req.decoded)
             })
         }
         app.get('/slides', async (req, res) => {
@@ -131,8 +131,28 @@ async function run() {
             const user = await userCollection.findOne(query);
             const isAdmin = user?.role === "Admin";
             res.send(isAdmin)
+        })
 
+        app.get('/users/member/:email', verifyToken, async (req, res) => {
+            const email = req.params.email;
+            if (email !== req.decoded.email) {
+                return res.status(403).send({ message: "Unauthorized access" });
+            }
+            const query = { email: email }
+            const user = await userCollection.findOne(query);
+            const isMember = user?.role === "Member";
+            res.send(isMember)
+        })
+        app.get('/members', verifyToken, async (req, res) => {
+            const email = req.query.email;
+            console.log(email)
+            if (email !== req.decoded.email) {
+                return res.status(403).send({ message: "Unauthorized access" });
+            }
+            const query = { role: "Member" }
+            const members = await userCollection.findOne(query);
 
+            res.send(members)
         })
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
