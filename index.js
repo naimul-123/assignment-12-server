@@ -68,6 +68,20 @@ async function run() {
                 // console.log(req.decoded)
             })
         }
+
+        const verifyAdmin = async (req, res, next) => {
+            const email = req.decoded.email;
+            const query = { email: email };
+            const user = await userCollection.findOne(query);
+            const isAdmin = user?.role === "Admin";
+            if (!isAdmin) {
+                return res.status(403).send({ message: 'Forbidden access' });
+            }
+
+            next();
+        }
+
+
         app.get('/slides', async (req, res) => {
             const result = await slideCollection.find().toArray();
             res.send(result)
@@ -117,11 +131,11 @@ async function run() {
             res.send(result);
         })
 
-        app.get('/users', verifyToken, async (req, res) => {
+        app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
             const result = await userCollection.find().toArray();
             res.send(result)
         })
-        app.get('/users/admin/:email', verifyToken, async (req, res) => {
+        app.get('/users/admin/:email', verifyToken, verifyAdmin, async (req, res) => {
             const email = req.params.email;
             if (email !== req.decoded.email) {
                 return res.status(403).send({ message: "Unauthorized access" });
@@ -133,7 +147,7 @@ async function run() {
             res.send(isAdmin)
         })
 
-        app.get('/users/member/:email', verifyToken, async (req, res) => {
+        app.get('/users/member/:email', verifyToken, verifyAdmin, async (req, res) => {
             const email = req.params.email;
             if (email !== req.decoded.email) {
                 return res.status(403).send({ message: "Unauthorized access" });
@@ -145,15 +159,34 @@ async function run() {
         })
         app.get('/members', verifyToken, async (req, res) => {
             const email = req.query.email;
-            console.log(email)
             if (email !== req.decoded.email) {
                 return res.status(403).send({ message: "Unauthorized access" });
             }
             const query = { role: "Member" }
-            const members = await userCollection.findOne(query);
+            const members = await userCollection.find(query).toArray();
 
             res.send(members)
         })
+
+        app.patch('/removeMember/:id', verifyToken, verifyAdmin, async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: new ObjectId(id) }
+            const updateUser = {
+                $set: {
+                    role: "user"
+                }
+            }
+
+            const result = await userCollection.updateOne(filter, updateUser);
+
+            res.send(result)
+
+
+        })
+
+
+
+
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
