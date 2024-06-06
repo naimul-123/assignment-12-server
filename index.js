@@ -50,7 +50,24 @@ async function run() {
             });
             res.send({ token })
         })
-
+        // middlewares
+        const verifyToken = (req, res, next) => {
+            if (!req.headers.authorization) {
+                return res.status(401).send({ message: 'Forbidden access' })
+            }
+            const token = req.headers.authorization.split(' ')[1];
+            if (!token) {
+                return res.status(401).send({ message: "Forbidden access" })
+            }
+            jwt.verify(token, secret, (err, decoded) => {
+                if (err) {
+                    return res.status(403).send({ message: "Forbidden access" })
+                }
+                req.decoded = decoded;
+                next();
+                console.log(req.decoded)
+            })
+        }
         app.get('/slides', async (req, res) => {
             const result = await slideCollection.find().toArray();
             res.send(result)
@@ -94,10 +111,28 @@ async function run() {
         app.post('/users', async (req, res) => {
             const { name, email } = req.body;
             const query = { email: email }
-            const insertUser = { $set: { name: name }, $setOnInsert: { email: email } }
+            const insertUser = { $set: { name: name }, $setOnInsert: { email: email, role: "user" } }
             const options = { upsert: true }
             const result = await userCollection.updateOne(query, insertUser, options);
             res.send(result);
+        })
+
+        app.get('/users', verifyToken, async (req, res) => {
+            const result = await userCollection.find().toArray();
+            res.send(result)
+        })
+        app.get('/users/admin/:email', verifyToken, async (req, res) => {
+            const email = req.params.email;
+            if (email !== req.decoded.email) {
+                return res.status(403).send({ message: "Unauthorized access" });
+
+            }
+            const query = { email: email }
+            const user = await userCollection.findOne(query);
+            const isAdmin = user?.role === "Admin";
+            res.send(isAdmin)
+
+
         })
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
