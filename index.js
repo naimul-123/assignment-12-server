@@ -53,11 +53,11 @@ async function run() {
         // middlewares
         const verifyToken = (req, res, next) => {
             if (!req.headers.authorization) {
-                return res.status(401).send({ message: 'Forbidden access' })
+                return res.status(401).send({ message: 'Unauthorized access' })
             }
             const token = req.headers.authorization.split(' ')[1];
             if (!token) {
-                return res.status(401).send({ message: "Forbidden access" })
+                return res.status(401).send({ message: "Unauthorized access" })
             }
             jwt.verify(token, secret, (err, decoded) => {
                 if (err) {
@@ -103,16 +103,15 @@ async function run() {
             const result = await apartmentCollection.findOne(query)
             res.send(result)
         })
+
+        app.get('/agreements', verifyToken, verifyAdmin, async (req, res) => {
+            const query = { status: "pending" }
+            const result = await agreementCollection.find(query).toArray();
+            res.send(result)
+        })
         app.post('/agreement', async (req, res) => {
             const agreement = req.body;
-            const {
-                name,
-                email,
-                floor_no,
-                block_name,
-                apartment_no,
-                rent,
-                status } = agreement;
+            const { email } = agreement;
             const query = { email: email };
             const isAlreadyExist = await agreementCollection.countDocuments(query);
             if (isAlreadyExist) {
@@ -120,6 +119,34 @@ async function run() {
             }
             const result = await agreementCollection.insertOne(agreement);
             res.send(result)
+
+        })
+
+        app.patch('/acceptagreement', verifyToken, verifyAdmin, async (req, res) => {
+            const id = req.query.id;
+            const email = req.query.email;
+            const agreementFilter = { _id: new ObjectId(id) }
+            const updatedAgreement = {
+                $set: {
+                    status: "checked"
+                }
+            };
+            const agreementResult = await agreementCollection.updateOne(agreementFilter, updatedAgreement)
+            const userFilter = { email: email }
+            const updatedUser = {
+                $set: {
+                    role: "Member"
+                }
+            };
+
+            if (agreementResult.modifiedCount) {
+                const userResult = await userCollection.updateOne(userFilter, updatedUser)
+                res.send(userResult)
+            }
+
+
+
+
 
         })
         app.post('/users', async (req, res) => {
@@ -131,11 +158,11 @@ async function run() {
             res.send(result);
         })
 
-        app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
+        app.get('/users', verifyToken, async (req, res) => {
             const result = await userCollection.find().toArray();
             res.send(result)
         })
-        app.get('/users/admin/:email', verifyToken, verifyAdmin, async (req, res) => {
+        app.get('/users/admin/:email', verifyToken, async (req, res) => {
             const email = req.params.email;
             if (email !== req.decoded.email) {
                 return res.status(403).send({ message: "Unauthorized access" });
@@ -147,7 +174,7 @@ async function run() {
             res.send(isAdmin)
         })
 
-        app.get('/users/member/:email', verifyToken, verifyAdmin, async (req, res) => {
+        app.get('/users/member/:email', verifyToken, async (req, res) => {
             const email = req.params.email;
             if (email !== req.decoded.email) {
                 return res.status(403).send({ message: "Unauthorized access" });
