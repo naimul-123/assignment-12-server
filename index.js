@@ -42,6 +42,7 @@ async function run() {
         const userCollection = database.collection('users');
         const apartmentCollection = database.collection('apartments');
         const agreementCollection = database.collection('agreements');
+        const cuponCollection = database.collection('cupons');
 
         app.post('/jwt', async (req, res) => {
             const user = req.body;
@@ -210,6 +211,47 @@ async function run() {
 
 
         })
+
+        app.get('/cupons', verifyToken, verifyAdmin, async (req, res) => {
+            const result = await cuponCollection.find().toArray();
+            res.send(result)
+        })
+
+
+        app.post('/addcupon', verifyToken, verifyAdmin, async (req, res) => {
+            const cupon = req.body;
+            const { cuponCode, description, disPercent } = req.body;
+            const discount = parseInt(disPercent)
+
+            const newCupon = {
+                cupon_code: cuponCode,
+                description,
+                discount,
+                isActive: true
+            }
+
+            const result = await cuponCollection.insertOne(newCupon)
+
+            res.send(result)
+        });
+
+        app.patch('/cupons/:id', verifyToken, verifyAdmin, async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: new ObjectId(id) }
+
+            const cupon = await cuponCollection.findOne(filter);
+            const { isActive } = cupon;
+            const updateCupon = {
+                $set: {
+                    isActive: !isActive
+                }
+            }
+            const result = await cuponCollection.updateOne(filter, updateCupon)
+            res.send(result)
+
+        })
+
+
 
 
 
