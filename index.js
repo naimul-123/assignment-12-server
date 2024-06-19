@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 require('dotenv').config()
-
+const stripe = require('stripe')(process.env.STRIPE_SEC_KEY)
 
 const app = express();
 const port = 5000;
@@ -110,6 +110,16 @@ async function run() {
             const result = await agreementCollection.find(query).toArray();
             res.send(result)
         })
+        app.get('/myagreement/:email', verifyToken, async (req, res) => {
+            const email = req.params.email;
+            if (email !== req.decoded.email) {
+                return res.status(403).send({ message: "Unauthorized access" });
+            }
+            console.log(email)
+            const query = { email: email }
+            const result = await agreementCollection.findOne(query);
+            res.send(result)
+        })
         app.post('/agreement', async (req, res) => {
             const agreement = req.body;
             const { email } = agreement;
@@ -212,25 +222,27 @@ async function run() {
 
         })
 
-        app.get('/cupons', verifyToken, verifyAdmin, async (req, res) => {
+        app.get('/allcupons', verifyToken, verifyAdmin, async (req, res) => {
             const result = await cuponCollection.find().toArray();
+            res.send(result)
+        })
+        app.get('/activeCupon', async (req, res) => {
+            const query = { isActive: true }
+            const result = await cuponCollection.find(query).toArray();
             res.send(result)
         })
 
 
+
+
         app.post('/addcupon', verifyToken, verifyAdmin, async (req, res) => {
             const cupon = req.body;
-            const { cuponCode, description, disPercent } = req.body;
-            const discount = parseInt(disPercent)
+            cupon.isActive = true;
+            cupon.discount = parseInt(cupon.discount)
 
-            const newCupon = {
-                cupon_code: cuponCode,
-                description,
-                discount,
-                isActive: true
-            }
 
-            const result = await cuponCollection.insertOne(newCupon)
+
+            const result = await cuponCollection.insertOne(cupon)
 
             res.send(result)
         });
@@ -250,14 +262,33 @@ async function run() {
             res.send(result)
 
         })
+        app.delete('/cupons/:id', verifyToken, verifyAdmin, async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: new ObjectId(id) }
+            const result = await cuponCollection.deleteOne(filter)
+            res.send(result)
+
+        })
 
 
 
+        app.post('/create-payment-intent', async (req, res) => {
+            const { price } = req.body;
+            const amount = parseInt(price * 100);
+            const paymentIntent = await stripe.paymentIntents.create({
+                amount: amount,
+                currency: 'usd',
+                payment_method_types: ['card']
+            })
+            res.send({
+                clientSecret: paymentIntent.client_secret
+
+            })
+        })
 
 
-
-        await client.db("admin").command({ ping: 1 });
-        console.log("Pinged your deployment. You successfully connected to MongoDB!");
+        // await client.db("admin").command({ ping: 1 });
+        // console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
         // Ensures that the client will close when you finish/error
         // await client.close();
