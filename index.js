@@ -7,7 +7,10 @@ const stripe = require('stripe')(process.env.STRIPE_SEC_KEY)
 const app = express();
 const port = 5000;
 
-app.use(cors());
+app.use(cors({
+    origin: ['http://localhost:5173'],
+    credentials: true
+}));
 app.use(express.json());
 
 const username = process.env.DB_USER;
@@ -115,19 +118,37 @@ async function run() {
             if (email !== req.decoded.email) {
                 return res.status(403).send({ message: "Unauthorized access" });
             }
-            console.log(email)
-            const query = { email: email }
+            // console.log(email)
+            const query = { email: email, status: "checked" }
+            const result = await agreementCollection.find(query).toArray();
+            res.send(result)
+        })
+
+        app.get('/agreement', verifyToken, async (req, res) => {
+            const id = req.query.id;
+            const query = { _id: new ObjectId(id) }
             const result = await agreementCollection.findOne(query);
             res.send(result)
         })
-        app.post('/agreement', async (req, res) => {
+        app.post('/agreement', verifyToken, async (req, res) => {
             const agreement = req.body;
-            const { email } = agreement;
-            const query = { email: email };
-            const isAlreadyExist = await agreementCollection.countDocuments(query);
-            if (isAlreadyExist) {
-                return res.send({ message: "You have already one agreement." })
+            const { email, apartment_id } = agreement;
+            const emailQuery = { email: email };
+            const bookedEmail = await agreementCollection.countDocuments(emailQuery);
+
+            if (bookedEmail > 0) {
+                return res.send({ message: "You have already booked an apartment." })
             }
+            const bookedQuery = { apartment_id: apartment_id };
+            const isBooked = await agreementCollection.countDocuments(bookedQuery);
+
+            if (isBooked > 0) {
+                return res.send({ message: "Someone already has booked this apartment! Please choose another apartment." })
+            }
+
+
+
+
             const result = await agreementCollection.insertOne(agreement);
             res.send(result)
 
@@ -232,6 +253,19 @@ async function run() {
             res.send(result)
         })
 
+        app.get('/cupon', verifyToken, async (req, res) => {
+            const code = req.query.code;
+            const query = { cupon_code: code }
+            const cupon = await cuponCollection.findOne(query);
+            if (cupon?.isActive) {
+                res.send({ status: "valid", discount: cupon.discount })
+            }
+            else {
+                res.send({ status: "invalid" })
+            }
+
+        })
+
 
 
 
@@ -272,20 +306,64 @@ async function run() {
 
 
 
-        app.post('/create-payment-intent', async (req, res) => {
-            const { price } = req.body;
-            const amount = parseInt(price * 100);
+        app.post('/verifypayment', verifyToken, async (req, res) => {
+
+        })
+
+        app.post('/create-payment-intent', verifyToken, async (req, res) => {
+            const { id, rent, billingMonth } = req.body;
+            const query = { _id: new ObjectId(id) }
+            const agreement = await agreementCollection.findOne(query);
+
+            if (agreement && agreement.billingInfo) {
+                const monthPaid = agreement.billingInfo.some(month => month.billingMonth === billingMonth)
+                if (monthPaid) {
+                    return res.send({ error: `Rent has been paid for ${billingMonth}` })
+                }
+
+            }
+
+
+            const amount = parseInt(rent * 100);
             const paymentIntent = await stripe.paymentIntents.create({
                 amount: amount,
                 currency: 'usd',
                 payment_method_types: ['card']
             })
+            // res.send(rent)
             res.send({
                 clientSecret: paymentIntent.client_secret
 
             })
         })
 
+        app.post('/updatePayment', verifyToken, async (req, res) => {
+            const { id, amount, trxId, created, billingMonth } = req.body;
+            const query = { _id: new ObjectId(id) };
+            const newFields = {
+                $push: {
+                    billingInfo: {
+                        trxId,
+                        created_at: new Date(created * 1000),
+                        billingMonth,
+                        paid_amount: amount / 100
+                    }
+                }
+            }
+
+            const result = await agreementCollection.updateOne(query, newFields);
+
+            res.send(result)
+
+        })
+
+        app.get('paidAgreements/:email', verifyToken, async (req, res) => {
+            const email = req.params.email;
+            const query = { email: email, status: "paid" }
+            const result = await agreementCollection.findOne(query);
+            res.send(result)
+
+        })
 
         // await client.db("admin").command({ ping: 1 });
         // console.log("Pinged your deployment. You successfully connected to MongoDB!");
