@@ -46,14 +46,15 @@ async function run() {
         const apartmentCollection = database.collection('apartments');
         const agreementCollection = database.collection('agreements');
         const cuponCollection = database.collection('cupons');
+        const announcementCollection = database.collection('announcements'); -
 
-        app.post('/jwt', async (req, res) => {
-            const user = req.body;
-            const token = jwt.sign(user, secret, {
-                expiresIn: '1h'
-            });
-            res.send({ token })
-        })
+            app.post('/jwt', async (req, res) => {
+                const user = req.body;
+                const token = jwt.sign(user, secret, {
+                    expiresIn: '1h'
+                });
+                res.send({ token })
+            })
         // middlewares
         const verifyToken = (req, res, next) => {
             if (!req.headers.authorization) {
@@ -190,7 +191,7 @@ async function run() {
             res.send(result);
         })
 
-        app.get('/users', verifyToken, async (req, res) => {
+        app.get('/users', async (req, res) => {
             const result = await userCollection.find().toArray();
             res.send(result)
         })
@@ -306,8 +307,29 @@ async function run() {
 
 
 
-        app.post('/verifypayment', verifyToken, async (req, res) => {
+        app.get('/paymenthistory', verifyToken, async (req, res) => {
+            const email = req.query.email
+            const month = req.query.month
 
+            if (email !== req.decoded.email) {
+                return res.status(403).send({ message: "Unauthorized access" });
+            }
+            const query = { email: email };
+            const projection = { billingInfo: 1, _id: 0 }
+            const agreement = await agreementCollection.findOne(query, { projection })
+            if (!agreement) {
+                return res.status(404).send({ message: "No data found" })
+            }
+            let billingInfo = agreement.billingInfo;
+            if (month) {
+                const monthRegex = new RegExp(month, 'i');
+                billingInfo = billingInfo.filter(info => monthRegex.test(info.billingMonth))
+                if (billingInfo.length === 0) {
+                    return res.status(404).sent({ message: "No data found" })
+                }
+            }
+
+            res.send(billingInfo);
         })
 
         app.post('/create-payment-intent', verifyToken, async (req, res) => {
@@ -357,12 +379,33 @@ async function run() {
 
         })
 
-        app.get('paidAgreements/:email', verifyToken, async (req, res) => {
+        app.get('/paidAgreements/:email', verifyToken, async (req, res) => {
             const email = req.params.email;
             const query = { email: email, status: "paid" }
             const result = await agreementCollection.findOne(query);
             res.send(result)
 
+        })
+
+        // announce related api
+        app.post('/makeAnnounce', verifyToken, verifyAdmin, async (req, res) => {
+
+            const { announcementInfo } = req.body
+            const result = await announcementCollection.insertOne(announcementInfo)
+            res.send(result)
+
+        })
+
+        app.get('/announcements', async (req, res) => {
+            const result = await announcementCollection.find().toArray();
+            res.send(result)
+        })
+
+        app.delete('/announcements/:id', verifyToken, verifyAdmin, async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await announcementCollection.deleteOne(query);
+            res.send(result)
         })
 
         // await client.db("admin").command({ ping: 1 });
