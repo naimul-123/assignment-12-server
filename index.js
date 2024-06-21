@@ -8,7 +8,7 @@ const app = express();
 const port = 5000;
 
 app.use(cors({
-    origin: ['http://localhost:5173'],
+    origin: ['http://localhost:5173', 'https://assignment-12-429b0.web.app'],
     credentials: true
 }));
 app.use(express.json());
@@ -101,6 +101,20 @@ async function run() {
             const totalapartments = await apartmentCollection.estimatedDocumentCount();
             const totalPage = Math.ceil(totalapartments / limit)
             res.send({ apartments, totalPage })
+        })
+
+        app.get('/apartmentinfo', verifyToken, verifyAdmin, async (req, res) => {
+            const totalapartments = await apartmentCollection.estimatedDocumentCount()
+            const totalBookedapratment = await agreementCollection.estimatedDocumentCount();
+            const totalUser = await userCollection.countDocuments();
+            const totalMemberUser = await userCollection.countDocuments({ role: "Member" })
+            const apartmentInfo = {
+                totalapartments,
+                totalBookedapratment,
+                totalUser,
+                totalMemberUser
+            }
+            res.send(apartmentInfo)
         })
         app.get('/apartment/:id', async (req, res) => {
             const id = req.params.id;
