@@ -85,6 +85,17 @@ async function run() {
 
             next();
         }
+        const verifyMember = async (req, res, next) => {
+            const email = req.decoded.email;
+            const query = { email: email };
+            const user = await userCollection.findOne(query);
+            const isMember = user?.role === "Member";
+            if (!isMember) {
+                return res.status(403).send({ message: 'Forbidden access' });
+            }
+
+            next();
+        }
 
 
         app.get('/slides', async (req, res) => {
@@ -128,12 +139,17 @@ async function run() {
             const result = await agreementCollection.find(query).toArray();
             res.send(result)
         })
-        app.get('/myagreement/:email', verifyToken, async (req, res) => {
+        app.get('/myagreement/:email', verifyToken, verifyMember, async (req, res) => {
             const email = req.params.email;
             if (email !== req.decoded.email) {
                 return res.status(403).send({ message: "Unauthorized access" });
             }
             // console.log(email)
+
+            const user = await userCollection.findOne({ email: email })
+            if (user.role !== "Member") {
+                return res.status(403).send({ message: "Unauthorized access" });
+            }
             const query = { email: email, status: "checked" }
             const result = await agreementCollection.find(query).toArray();
             res.send(result)
@@ -148,7 +164,7 @@ async function run() {
         app.post('/agreement', verifyToken, async (req, res) => {
             const agreement = req.body;
             const { email, apartment_id } = agreement;
-            const emailQuery = { email: email };
+            const emailQuery = { email: email, role: { $nin: ["Admin", "user"] } };
             const bookedEmail = await agreementCollection.countDocuments(emailQuery);
 
             if (bookedEmail > 0) {
@@ -175,7 +191,8 @@ async function run() {
             const agreementFilter = { _id: new ObjectId(id) }
             const updatedAgreement = {
                 $set: {
-                    status: "checked"
+                    status: "checked",
+                    accepted: true
                 }
             };
             const agreementResult = await agreementCollection.updateOne(agreementFilter, updatedAgreement)
@@ -190,12 +207,19 @@ async function run() {
                 const userResult = await userCollection.updateOne(userFilter, updatedUser)
                 res.send(userResult)
             }
-
-
-
-
-
         })
+
+        app.delete('/rejectagreement', verifyToken, verifyAdmin, async (req, res) => {
+            const id = req.query.id;
+            const email = req.query.email;
+
+            const query = { _id: new ObjectId(id), email: email }
+
+            const result = await agreementCollection.deleteOne(query)
+            res.send(result)
+        })
+
+
         app.post('/users', async (req, res) => {
             const { name, email } = req.body;
             const query = { email: email }
@@ -339,7 +363,7 @@ async function run() {
                 const monthRegex = new RegExp(month, 'i');
                 billingInfo = billingInfo.filter(info => monthRegex.test(info.billingMonth))
                 if (billingInfo.length === 0) {
-                    return res.status(404).sent({ message: "No data found" })
+                    return res.status(404).send({ message: "No data found" })
                 }
             }
 
